@@ -41,3 +41,19 @@ input, textarea {
     padding: 8px;
     margin-top: 5px;
 }
+
+.edit-btn, .save-btn {
+    margin-left: 5px;
+    padding: 5px 10px;
+    cursor: pointer;
+}
+
+.save-btn {
+    background-color: #4CAF50;
+    color: white;
+}
+
+.edit-btn {
+    background-color: #f0ad4e;
+    color: white;
+}

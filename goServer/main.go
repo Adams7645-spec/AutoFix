@@ -2,18 +2,18 @@ package main
 
 import (
 	"database/sql"
-	"encoding/json"
-	"io"
 	"log"
+	"os"
 
 	"net/http"
-	"os"
 	"sync"
 
 	"github.com/gin-gonic/gin"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type CarRecord struct {
+	ID          string `json:"id"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	CarNumber   string `json:"carNumber"`
@@ -30,7 +30,12 @@ var (
 
 func initDB() {
 	var err error
-	db, err = sql.Open("sqlite3", "./cars.db")
+
+	if _, err := os.Stat("./goServer/cars.db"); os.IsNotExist(err) {
+		log.Println("База данных не найдена, создается новая база данных.")
+	}
+
+	db, err = sql.Open("sqlite3", "./goServer/cars.db")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -53,40 +58,45 @@ func loadCarRecords() {
 	mu.Lock()
 	defer mu.Unlock()
 
-	file, err := os.Open("data.json")
+	rows, err := db.Query("SELECT id, title, description, carNumber, carBrand, clientName, clientPhone FROM cars")
 	if err != nil {
-		if os.IsNotExist(err) {
-			carRecords = []CarRecord{}
-			return
+		panic(err)
+	}
+	defer rows.Close()
+
+	carRecords = []CarRecord{}
+
+	for rows.Next() {
+		var car CarRecord
+		if err := rows.Scan(&car.ID, &car.Title, &car.Description, &car.CarNumber, &car.CarBrand, &car.ClientName, &car.ClientPhone); err != nil {
+			panic(err)
 		}
-		panic(err)
-	}
-	defer file.Close()
-
-	data, err := io.ReadAll(file)
-	if err != nil {
-		panic(err)
+		carRecords = append(carRecords, car)
 	}
 
-	if err := json.Unmarshal(data, &carRecords); err != nil {
-		panic(err)
-	}
-}
-
-func saveCarRecords() {
-	data, err := json.Marshal(carRecords)
-	if err != nil {
-		panic(err)
-	}
-
-	if err := os.WriteFile("data.json", data, 0644); err != nil {
+	if err := rows.Err(); err != nil {
 		panic(err)
 	}
 }
 
 func getCars(c *gin.Context) {
-	mu.Lock()
-	defer mu.Unlock()
+	rows, err := db.Query("SELECT id, title, description, carNumber, carBrand, clientName, clientPhone FROM cars")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var carRecords []CarRecord
+	for rows.Next() {
+		var car CarRecord
+		if err := rows.Scan(&car.ID, &car.Title, &car.Description, &car.CarNumber, &car.CarBrand, &car.ClientName, &car.ClientPhone); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		carRecords = append(carRecords, car)
+	}
+
 	c.JSON(http.StatusOK, carRecords)
 }
 
@@ -97,9 +107,14 @@ func addCar(c *gin.Context) {
 		return
 	}
 
-	mu.Lock()
-	carRecords = append(carRecords, newCar)
-	mu.Unlock()
+	sqlStatement := `
+        INSERT INTO cars (title, description, carNumber, carBrand, clientName, clientPhone)
+        VALUES (?, ?, ?, ?, ?, ?)`
+	_, err := db.Exec(sqlStatement, newCar.Title, newCar.Description, newCar.CarNumber, newCar.CarBrand, newCar.ClientName, newCar.ClientPhone)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusCreated, newCar)
 }
@@ -107,25 +122,54 @@ func addCar(c *gin.Context) {
 func deleteCar(c *gin.Context) {
 	carNumber := c.Param("id")
 
-	mu.Lock()
-	defer mu.Unlock()
-
-	for i, car := range carRecords {
-		if car.CarNumber == carNumber {
-			carRecords = append(carRecords[:i], carRecords[i+1:]...)
-			saveCarRecords()
-			c.JSON(http.StatusOK, gin.H{"message": "Car deleted"})
-			return
-		}
+	sqlStatement := `DELETE FROM cars WHERE carNumber = ?`
+	result, err := db.Exec(sqlStatement, carNumber)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
-	c.JSON(http.StatusNotFound, gin.H{"error": "Car not found"})
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Car not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Car deleted"})
+}
+
+func updateCar(c *gin.Context) {
+	carNumber := c.Param("id")
+	var updatedCar CarRecord
+
+	if err := c.ShouldBindJSON(&updatedCar); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	sqlStatement := `
+        UPDATE cars 
+        SET title = ?, description = ?, carBrand = ?, clientName = ?, clientPhone = ?
+        WHERE carNumber = ?`
+	_, err := db.Exec(sqlStatement, updatedCar.Title, updatedCar.Description, updatedCar.CarBrand, updatedCar.ClientName, updatedCar.ClientPhone, carNumber)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, updatedCar)
 }
 
 func main() {
-	loadCarRecords()
-
 	initDB()
 	defer db.Close()
+
+	loadCarRecords()
 
 	router := gin.Default()
 	router.Static("/static", "./static")
@@ -137,7 +181,7 @@ func main() {
 	router.GET("/api/cars", getCars)
 	router.POST("/api/cars", addCar)
 	router.DELETE("/api/cars/:id", deleteCar)
-	//router.PUT("/api/cars/:id", updateCar)
+	router.PUT("/api/cars/:id", updateCar)
 
 	router.Run(":8080")
 }
