@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ панель ремонтной мастерской</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Админ панель ремонтной мастерской</h1>
+        
+        <h2>Список автомобилей</h2>
+        <table id="carList">
+            <thead>
+                <tr>
+                    <th>Название</th>
+                    <th>Описание</th>
+                    <th>Номер автомобиля</th>
+                    <th>Марка автомобиля</th>
+                    <th>ФИО клиента</th>
+                    <th>Номер клиента</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Записи автомобилей добавляются сюда -->
+            </tbody>
+        </table>
+
+        <h2>Добавить новую запись</h2>
+        <form id="carForm">
+            <label for="title">Название:</label>
+            <input type="text" id="title" required>
+
+            <label for="description">Описание:</label>
+            <textarea id="description" required></textarea>
+
+            <label for="carNumber">Номер автомобиля:</label>
+            <input type="text" id="carNumber" required>
+
+            <label for="carBrand">Марка автомобиля:</label>
+            <input type="text" id="carBrand" required>
+
+            <label for="clientName">ФИО клиента:</label>
+            <input type="text" id="clientName" required>
+
+            <label for="clientPhone">Номер клиента:</label>
+            <input type="text" id="clientPhone" required>
+
+            <button type="submit">Добавить запись</button>
+        </form>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
